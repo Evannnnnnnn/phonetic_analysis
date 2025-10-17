@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🎤 Phonetic Analysis Studio</title>
+
+<style>
+/* ========== BASE ========== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Poppins', sans-serif;
+  background: linear-gradient(-45deg, #667eea, #764ba2, #89f7fe, #66a6ff);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+  min-height: 100vh;
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  color: #222;
+}
+@keyframes gradientShift {
+  0% {background-position: 0% 50%;}
+  50% {background-position: 100% 50%;}
+  100% {background-position: 0% 50%;}
+}
+
+/* ========== CONTAINER ========== */
+.container {
+  max-width: 900px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 25px;
+  backdrop-filter: blur(15px);
+  box-shadow: 0 8px 35px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  transition: all 0.4s ease;
+}
+
+/* ========== HEADER ========== */
+.header {
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
+  color: white;
+  text-align: center;
+  padding: 45px 20px;
+}
+.header h1 {
+  font-size: 2.8em;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.header p { margin-top: 10px; opacity: 0.9; }
+
+/* ========== BUTTONS ========== */
+.recording-section {
+  text-align: center;
+  margin: 35px 0;
+}
+.btn {
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.4);
+  color: white;
+  padding: 14px 35px;
+  font-size: 18px;
+  border-radius: 50px;
+  cursor: pointer;
+  margin: 10px;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+  backdrop-filter: blur(8px);
+}
+.btn:hover {
+  background: rgba(255,255,255,0.35);
+  transform: translateY(-2px);
+}
+.btn.recording {
+  background: linear-gradient(145deg, #ff4b2b, #ff416c);
+  box-shadow: 0 0 25px rgba(255, 65, 108, 0.6);
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 10px rgba(255,65,108,0.5); }
+  50% { box-shadow: 0 0 30px rgba(255,65,108,1); }
+  100% { box-shadow: 0 0 10px rgba(255,65,108,0.5); }
+}
+
+/* ========== STATUS ========== */
+.status {
+  text-align: center;
+  font-weight: 600;
+  margin: 10px auto;
+  padding: 12px;
+  border-radius: 10px;
+  width: fit-content;
+  min-width: 250px;
+  transition: all 0.3s ease;
+}
+.status.ready { background: rgba(46, 204, 113, 0.2); color: #1b5e20; }
+.status.recording { background: rgba(231, 76, 60, 0.2); color: #c0392b; }
+.status.processing { background: rgba(241, 196, 15, 0.2); color: #f39c12; }
+
+/* ========== RESULTS PANEL ========== */
+.results {
+  padding: 40px;
+  background: rgba(255,255,255,0.45);
+  border-radius: 20px;
+  margin: 20px;
+  animation: fadeUp 0.7s ease;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== SECTIONS ========== */
+.transcription {
+  background: rgba(255,255,255,0.8);
+  border-radius: 15px;
+  padding: 20px;
+  margin-bottom: 25px;
+  box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+}
+.transcription h3 { margin-bottom: 10px; }
+
+.pronunciation-comparison {
+  background: rgba(255,255,255,0.6);
+  border-radius: 15px;
+  padding: 20px;
+  margin-top: 10px;
+  border: 1px solid rgba(255,255,255,0.3);
+  box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+}
+.pronunciation-label {
+  font-weight: 600;
+  width: 160px;
+}
+.pronunciation-row {
+  display: flex; align-items: center; margin: 10px 0;
+}
+.pronunciation-text {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1em;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.9);
+  border-radius: 10px;
+}
+
+/* Phoneme highlights */
+.phoneme-correct { color: #2e7d32; }
+.phoneme-error { color: #c62828; border-bottom: 2px solid #e57373; }
+
+/* ========== ACCURACY METER ========== */
+.accuracy-display {
+  margin: 35px auto;
+  text-align: center;
+  position: relative;
+  width: 160px; height: 160px;
+}
+.accuracy-ring {
+  stroke: url(#grad);
+  stroke-width: 10;
+  fill: none;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset 1s ease;
+}
+.accuracy-number {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2em;
+  font-weight: 700;
+  color: #333;
+}
+.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>🎤 Phonetic Analysis Studio</h1>
+    <p>Record your speech and get detailed pronunciation feedback</p>
+  </div>
+
+  <div class="content">
+    <div class="recording-section">
+      <button id="startBtn" class="btn">🎙 Start Recording</button>
+      <button id="stopBtn" class="btn" disabled>⏹ Stop</button>
+    </div>
+    <div id="status" class="status ready">Ready to record</div>
+
+    <div id="results" class="hidden results">
+      <div class="transcription">
+        <h3>📝 Transcription</h3>
+        <div id="transcriptionText"></div>
+      </div>
+
+      <div class="pronunciation-comparison">
+        <h3>🔊 Pronunciation Analysis</h3>
+        <div class="pronunciation-row">
+          <div class="pronunciation-label">Your Pronunciation:</div>
+          <div id="yourPronunciation" class="pronunciation-text"></div>
+        </div>
+        <div class="pronunciation-row">
+          <div class="pronunciation-label">Official Pronunciation:</div>
+          <div id="officialPronunciation" class="pronunciation-text"></div>
+        </div>
+      </div>
+
+      <div class="accuracy-display">
+        <svg width="160" height="160">
+          <defs>
+            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#667eea"/>
+              <stop offset="100%" stop-color="#764ba2"/>
+            </linearGradient>
+          </defs>
+          <circle cx="80" cy="80" r="70" stroke="#eee" stroke-width="10" fill="none" />
+          <circle id="accuracyRing" cx="80" cy="80" r="70" class="accuracy-ring" stroke-dasharray="440" stroke-dashoffset="440"/>
+        </svg>
+        <div id="accuracyNumber" class="accuracy-number">0%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let mediaRecorder, audioChunks = [], isRecording = false;
+
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
+const results = document.getElementById('results');
+const transcriptionText = document.getElementById('transcriptionText');
+const accuracyNumber = document.getElementById('accuracyNumber');
+const ring = document.getElementById('accuracyRing');
+
+startBtn.onclick = startRecording;
+stopBtn.onclick = stopRecording;
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const options = { mimeType: 'audio/webm;codecs=opus' };
+    mediaRecorder = new MediaRecorder(stream, options);
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = e => e.data.size > 0 && audioChunks.push(e.data);
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      stream.getTracks().forEach(t => t.stop());
+      await analyzeAudio(blob);
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+    startBtn.disabled = true; stopBtn.disabled = false;
+    startBtn.classList.add('recording');
+    statusEl.textContent = 'Recording...'; statusEl.className = 'status recording';
+  } catch {
+    statusEl.textContent = 'Microphone permission denied';
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && isRecording) {
+    mediaRecorder.stop();
+    isRecording = false;
+    startBtn.disabled = false; stopBtn.disabled = true;
+    startBtn.classList.remove('recording');
+    statusEl.textContent = 'Processing...'; statusEl.className = 'status processing';
+  }
+}
+
+async function analyzeAudio(blob) {
+  const formData = new FormData();
+  formData.append('file', blob, 'audio.webm');
+  const res = await fetch('/align', { method: 'POST', body: formData });
+  const data = await res.json();
+
+  if (res.ok) {
+    displayResults(data);
+  } else {
+    statusEl.textContent = 'Error analyzing audio';
+  }
+}
+
+function displayResults(data) {
+  results.classList.remove('hidden');
+  statusEl.textContent = 'Analysis complete!'; statusEl.className = 'status ready';
+  transcriptionText.textContent = data.transcribed_text || '[No text detected]';
+
+  displayPronunciationComparison(data.results);
+  animateAccuracy(data.accuracy);
+}
+
+function displayPronunciationComparison(results) {
+  const yourEl = document.getElementById('yourPronunciation');
+  const offEl = document.getElementById('officialPronunciation');
+  const space = '&nbsp;&nbsp;';
+
+  const yourHTML = results.map(r =>
+    `<span>${r.detected.map((p,i)=>`<span class="${r.errors.some(e=>e.index===i)?'phoneme-error':'phoneme-correct'}">${p}</span>`).join(' ')}</span>`
+  ).join(space);
+
+  const offHTML = results.map(r =>
+    `<span>${r.standard.map(p=>`<span class="phoneme-correct">${p}</span>`).join(' ')}</span>`
+  ).join(space);
+
+  yourEl.innerHTML = yourHTML;
+  offEl.innerHTML = offHTML;
+}
+
+function animateAccuracy(val) {
+  const percent = Math.max(0, Math.min(val, 100));
+  const offset = 440 - (440 * percent) / 100;
+  ring.style.strokeDashoffset = offset;
+  accuracyNumber.textContent = percent.toFixed(1) + '%';
+}
+</script>
+</body>
+</html>
