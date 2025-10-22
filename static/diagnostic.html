@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Audio Quality Diagnostic</title>
+  <style>
+    body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
+    .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    .good { background: #4CAF50; color: white; }
+    .bad { background: #f44336; color: white; }
+    pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    .info { margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Audio Quality Diagnostic Tool</h1>
+  
+  <div class="section">
+    <h2>Step 1: Test Your Current Setup</h2>
+    <button onclick="testCurrentSetup()">🎤 Record with Current Method</button>
+    <div id="currentResults"></div>
+  </div>
+
+  <div class="section">
+    <h2>Step 2: Test High-Quality Setup</h2>
+    <button onclick="testHighQuality()">🎤 Record with High-Quality Method</button>
+    <div id="hqResults"></div>
+  </div>
+
+  <div class="section">
+    <h2>Step 3: Compare Results</h2>
+    <div id="comparison"></div>
+  </div>
+
+  <script>
+    let currentRecording = null;
+    let hqRecording = null;
+
+    // ========== TEST CURRENT SETUP ==========
+    async function testCurrentSetup() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const settings = stream.getAudioTracks()[0].getSettings();
+        
+        document.getElementById('currentResults').innerHTML = `
+          <div class="info">
+            <h3>Current Settings:</h3>
+            <pre>${JSON.stringify(settings, null, 2)}</pre>
+            ${settings.sampleRate < 44100 ? '<p class="bad">⚠️ Sample rate is LOW!</p>' : '<p class="good">✓ Sample rate is good</p>'}
+            ${settings.echoCancellation ? '<p class="bad">⚠️ Echo cancellation is ON (compresses audio)</p>' : '<p class="good">✓ No echo cancellation</p>'}
+            ${settings.noiseSuppression ? '<p class="bad">⚠️ Noise suppression is ON (compresses audio)</p>' : '<p class="good">✓ No noise suppression</p>'}
+            ${settings.autoGainControl ? '<p class="bad">⚠️ Auto gain is ON (distorts audio)</p>' : '<p class="good">✓ No auto gain</p>'}
+          </div>
+        `;
+        
+        stream.getTracks().forEach(t => t.stop());
+      } catch (e) {
+        document.getElementById('currentResults').innerHTML = `<p class="bad">Error: ${e.message}</p>`;
+      }
+    }
+
+    // ========== TEST HIGH-QUALITY SETUP ==========
+    async function testHighQuality() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            sampleRate: { ideal: 48000, min: 44100 },
+            sampleSize: { ideal: 24, min: 16 },
+            channelCount: 1,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            latency: 0
+          }
+        });
+        
+        const settings = stream.getAudioTracks()[0].getSettings();
+        
+        document.getElementById('hqResults').innerHTML = `
+          <div class="info">
+            <h3>High-Quality Settings:</h3>
+            <pre>${JSON.stringify(settings, null, 2)}</pre>
+            ${settings.sampleRate >= 44100 ? '<p class="good">✓ Sample rate is HIGH!</p>' : '<p class="bad">⚠️ Sample rate still low</p>'}
+            ${!settings.echoCancellation ? '<p class="good">✓ No echo cancellation</p>' : '<p class="bad">⚠️ Echo cancellation still on</p>'}
+            ${!settings.noiseSuppression ? '<p class="good">✓ No noise suppression</p>' : '<p class="bad">⚠️ Noise suppression still on</p>'}
+            ${!settings.autoGainControl ? '<p class="good">✓ No auto gain</p>' : '<p class="bad">⚠️ Auto gain still on</p>'}
+          </div>
+        `;
+        
+        stream.getTracks().forEach(t => t.stop());
+      } catch (e) {
+        document.getElementById('hqResults').innerHTML = `<p class="bad">Error: ${e.message}</p>`;
+      }
+    }
+
+    // ========== AUTO TEST ON LOAD ==========
+    window.addEventListener('load', () => {
+      testCurrentSetup();
+    });
+  </script>
+
+  <div class="section">
+    <h2>💡 Solutions Based on Results:</h2>
+    <div style="line-height: 1.6;">
+      <p><strong>If echo cancellation/noise suppression won't turn off:</strong></p>
+      <ul>
+        <li>Some browsers force these on for privacy</li>
+        <li>Try Chrome/Edge (better control than Safari)</li>
+        <li>Check browser://flags for audio processing settings</li>
+      </ul>
+
+      <p><strong>If sample rate is low:</strong></p>
+      <ul>
+        <li>Check your system audio settings</li>
+        <li>macOS: System Preferences → Sound → Input → Format</li>
+        <li>Try a different microphone</li>
+      </ul>
+
+      <p><strong>To match BoldVoice quality:</strong></p>
+      <ul>
+        <li>Use AudioWorklet (provided in high_quality_recorder.html)</li>
+        <li>Force 48kHz sample rate</li>
+        <li>Disable ALL processing (echo cancel, noise suppress, AGC)</li>
+        <li>Use 16-bit PCM WAV format (no compression)</li>
+        <li>Check microphone permissions are fully granted</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

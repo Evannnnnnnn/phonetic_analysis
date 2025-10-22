@@ -1,25 +1,44 @@
 import os
 import re
 import tempfile
-import nltk
 import torch
 import torchaudio
+import torchaudio.functional as F
 import librosa
+import nltk
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-import whisperx
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
 from transformers import (
     Wav2Vec2FeatureExtractor,
     Wav2Vec2CTCTokenizer,
     Wav2Vec2Processor,
     Wav2Vec2ForCTC,
 )
+
+from g2p_en import G2p
 from gtts import gTTS
 import pyttsx3
 import io
 import base64
 from google import genai
+
+import shutil
+
+# Download NLTK data if not already present
+try:
+    nltk.data.find('taggers/averaged_perceptron_tagger_eng')
+except LookupError:
+    nltk.download('averaged_perceptron_tagger_eng', quiet=True)
+try:
+    nltk.data.find('corpora/cmudict')
+except LookupError:
+    nltk.download('cmudict', quiet=True)
+try:
+    nltk.data.find('tagsets/universal_tagset')
+except LookupError:
+    nltk.download('universal_tagset', quiet=True)
 
 # The client gets the API key from the environment variable `GEMINI_API_KEY`.
 client = genai.Client()
@@ -33,7 +52,6 @@ app = FastAPI()
 conversation_history = {}
 
 # Pronunciation Tracking Storage
-pronunciation_tracking = {}
 
 # Text-to-Speech Engine
 tts_engine = None
@@ -47,66 +65,114 @@ except Exception as e:
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 DEVICE = "cpu"
-WHISPER_MODEL = whisperx.load_model("base", DEVICE, compute_type="int8")
 
+WHISPER_MODEL_NAME = "openai/whisper-base.en"
 PHONEME_MODEL = "facebook/wav2vec2-lv-60-espeak-cv-ft"
+
+print("🎤 Loading Whisper model...")
+whisper_processor = WhisperProcessor.from_pretrained(WHISPER_MODEL_NAME)
+whisper_model = WhisperForConditionalGeneration.from_pretrained(WHISPER_MODEL_NAME).to(DEVICE)
+
+print("\n🧠 Loading Wav2Vec2 phoneme model...")
 feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(PHONEME_MODEL)
 tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(PHONEME_MODEL)
-PHONEME_PROCESSOR = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
-PHONEME_MODEL_LOADED = Wav2Vec2ForCTC.from_pretrained(PHONEME_MODEL)
+processor = Wav2Vec2Processor(
+    feature_extractor=feature_extractor, 
+    tokenizer=tokenizer
+)
+model = Wav2Vec2ForCTC.from_pretrained(PHONEME_MODEL).to(DEVICE)
+vocab = processor.tokenizer.get_vocab()
+print(f"✅ Model vocabulary size: {len(vocab)}")
 
-# CMU dictionary
-try:
-    nltk.data.find("corpora/cmudict")
-except LookupError:
-    nltk.download("cmudict")
-CMU_DICT = nltk.corpus.cmudict.dict()
-
-# -----------------------------
-# Utility functions
-# -----------------------------
-def clean_phoneme_sequence(phoneme_string: str):
-    phonemes = phoneme_string.replace("|", " ").split()
-    return [p.strip() for p in phonemes if p.strip()]
-
-
-ARPABET_TO_IPA = {
-    "AA": "ɑ", "AE": "æ", "AH": "ʌ", "AO": "ɔ", "AW": "aʊ", "AY": "aɪ",
-    "B": "b", "CH": "tʃ", "D": "d", "DH": "ð", "EH": "ɛ", "ER": "ɝ",
-    "EY": "eɪ", "F": "f", "G": "ɡ", "HH": "h", "IH": "ɪ", "IY": "i",
-    "JH": "dʒ", "K": "k", "L": "l", "M": "m", "N": "n", "NG": "ŋ",
-    "OW": "oʊ", "OY": "ɔɪ", "P": "p", "R": "ɹ", "S": "s", "SH": "ʃ",
-    "T": "t", "TH": "θ", "UH": "ʊ", "UW": "u", "V": "v", "W": "w",
-    "Y": "j", "Z": "z", "ZH": "ʒ"
-}
-
-def arpabet_to_ipa(arpabet_seq):
-    ipa_seq = []
-    for sym in arpabet_seq:
-        sym = sym.rstrip("012")  # remove stress markers
-        ipa = ARPABET_TO_IPA.get(sym, sym)
-        ipa_seq.append(ipa)
-    return ipa_seq
-
-
-def normalize_ipa(seq):
-    EQUIV = {"ɝ": "ɚ", "ɜ": "ɚ"}
-    normalized = []
-    for p in seq:
-        p = EQUIV.get(p, p)
-        p = p.replace("ː", "")  # remove length markers
-        normalized.append(p)
-    return normalized
-
-
-def normalize_word_for_cmu(word: str) -> str:
-    word = re.sub(r"[^\w\s]", "", word.lower())
-    contractions = {
-        "im": "i'm", "ive": "i've", "dont": "don't", "doesnt": "doesn't",
-        "cant": "can't", "isnt": "isn't", "hows": "how's", "wont": "won't",
-        "werent": "weren't", "didnt": "didn't",
+def text_to_phonemes_g2p(text, vocab):
+    """
+    Convert text to phonemes using g2p-en
+    Maps to eSpeak-compatible IPA that matches the model vocabulary
+    """
+    g2p = G2p()
+    
+    # Enhanced ARPAbet to eSpeak IPA mapping
+    # Based on the actual vocab from facebook/wav2vec2-lv-60-espeak-cv-ft
+    ARPABET_TO_ESPEAK = {
+        # Vowels - monophthongs
+        "AA": "ɑː",  # father
+        "AE": "æ",   # cat
+        "AH": "ə",   # about (schwa) - changed from ʌ
+        "AO": "ɔː",  # thought
+        "EH": "ɛ",   # bed
+        "ER": "ɜː",  # bird
+        "IH": "ɪ",   # bit
+        "IY": "iː",  # beat
+        "UH": "ʊ",   # book
+        "UW": "uː",  # boot
+        
+        # Diphthongs
+        "AW": "aʊ",  # now
+        "AY": "aɪ",  # bite
+        "EY": "eɪ",  # bait
+        "OW": "oʊ",  # boat
+        "OY": "ɔɪ",  # boy
+        
+        # Consonants
+        "B": "b",
+        "CH": "tʃ",
+        "D": "d",
+        "DH": "ð",   # this
+        "F": "f",
+        "G": "ɡ",
+        "HH": "h",
+        "JH": "dʒ",  # judge
+        "K": "k",
+        "L": "l",
+        "M": "m",
+        "N": "n",
+        "NG": "ŋ",   # sing
+        "P": "p",
+        "R": "ɹ",    # red
+        "S": "s",
+        "SH": "ʃ",   # ship
+        "T": "t",
+        "TH": "θ",   # think
+        "V": "v",
+        "W": "w",
+        "Y": "j",
+        "Z": "z",
+        "ZH": "ʒ",   # measure
     }
-    return contractions.get(word, word)
+    
+    phonemes = []
+    words = text.lower().split()
+    
+    for word in words:
+        # Get ARPAbet from g2p
+        arpabet_list = g2p(word)
+        
+        for arpa in arpabet_list:
+            # Remove stress markers (0, 1, 2)
+            arpa_clean = ''.join(c for c in arpa if c.isalpha())
+            
+            if arpa_clean in ARPABET_TO_ESPEAK:
+                espeak_phone = ARPABET_TO_ESPEAK[arpa_clean]
+                
+                # Only add if it exists in the model's vocabulary
+                if espeak_phone in vocab:
+                    phonemes.append(espeak_phone)
+                else:
+                    # Try fallback alternatives
+                    fallbacks = {
+                        "ɑː": ["ɑ", "a"],
+                        "iː": ["i"],
+                        "uː": ["u"],
+                        "ɜː": ["ɜ"],
+                        "ɔː": ["ɔ"],
+                    }
+                    if espeak_phone in fallbacks:
+                        for alt in fallbacks[espeak_phone]:
+                            if alt in vocab:
+                                phonemes.append(alt)
+                                break
+    
+    return phonemes
 
 
 def compare_phoneme_sequences(std, det):
@@ -175,116 +241,7 @@ def text_to_speech(text):
         
         return None
 
-def track_pronunciation_errors(session_id, word, detected_phonemes, standard_phonemes, errors):
-    """Track pronunciation errors for analysis."""
-    if session_id not in pronunciation_tracking:
-        pronunciation_tracking[session_id] = {
-            "total_words": 0,
-            "error_count": 0,
-            "word_errors": {},
-            "phoneme_errors": {},
-            "error_patterns": []
-        }
-    
-    tracking = pronunciation_tracking[session_id]
-    tracking["total_words"] += 1
-    
-    if errors:
-        tracking["error_count"] += len(errors)
-        
-        # Track word-level errors
-        if word not in tracking["word_errors"]:
-            tracking["word_errors"][word] = {"count": 0, "errors": []}
-        tracking["word_errors"][word]["count"] += 1
-        tracking["word_errors"][word]["errors"].extend(errors)
-        
-        # Track phoneme-level errors
-        for error in errors:
-            expected_ph = error["expected"]
-            actual_ph = error["actual"]
-            if expected_ph not in tracking["phoneme_errors"]:
-                tracking["phoneme_errors"][expected_ph] = {"count": 0, "substitutions": {}}
-            tracking["phoneme_errors"][expected_ph]["count"] += 1
-            if actual_ph not in tracking["phoneme_errors"][expected_ph]["substitutions"]:
-                tracking["phoneme_errors"][expected_ph]["substitutions"][actual_ph] = 0
-            tracking["phoneme_errors"][expected_ph]["substitutions"][actual_ph] += 1
-        
-        # Track error patterns
-        tracking["error_patterns"].append({
-            "word": word,
-            "detected": detected_phonemes,
-            "standard": standard_phonemes,
-            "errors": errors
-        })
 
-def generate_pronunciation_feedback(session_id):
-    """Generate structural pronunciation feedback using GenAI."""
-    if session_id not in pronunciation_tracking:
-        return "No pronunciation data available for analysis."
-    
-    tracking = pronunciation_tracking[session_id]
-    
-    if tracking["total_words"] == 0:
-        return "No pronunciation data available for analysis."
-    
-    # Calculate overall accuracy
-    accuracy = ((tracking["total_words"] - tracking["error_count"]) / tracking["total_words"]) * 100
-    
-    # Find most problematic words
-    problematic_words = sorted(tracking["word_errors"].items(), 
-                             key=lambda x: x[1]["count"], reverse=True)[:5]
-    
-    # Find most common phoneme substitutions
-    common_substitutions = {}
-    for expected, data in tracking["phoneme_errors"].items():
-        for actual, count in data["substitutions"].items():
-            if actual not in common_substitutions:
-                common_substitutions[actual] = []
-            common_substitutions[actual].append((expected, count))
-    
-    # Build analysis prompt
-    analysis_data = {
-        "total_words": tracking["total_words"],
-        "error_count": tracking["error_count"],
-        "accuracy": accuracy,
-        "problematic_words": problematic_words,
-        "common_substitutions": common_substitutions,
-        "error_patterns": tracking["error_patterns"][-10:]  # Last 10 errors
-    }
-    
-    prompt = f"""As a pronunciation coach, analyze the following pronunciation data and provide structured feedback:
-
-OVERALL PERFORMANCE:
-- Total words spoken: {analysis_data['total_words']}
-- Pronunciation errors: {analysis_data['error_count']}
-- Overall accuracy: {analysis_data['accuracy']:.1f}%
-
-MOST PROBLEMATIC WORDS:
-{chr(10).join([f"- '{word}': {data['count']} errors" for word, data in analysis_data['problematic_words']])}
-
-COMMON PHONEME SUBSTITUTIONS:
-{chr(10).join([f"- '{actual}' instead of '{expected}' ({count} times)" for actual, subs in analysis_data['common_substitutions'].items() for expected, count in subs[:3]])}
-
-RECENT ERROR PATTERNS:
-{chr(10).join([f"- '{pattern['word']}': Expected {pattern['standard']}, said {pattern['detected']}" for pattern in analysis_data['error_patterns'][-5:]])}
-
-Please provide:
-1. A brief overall assessment
-2. The top 3 pronunciation challenges
-3. Specific improvement recommendations
-4. Practice suggestions for the most common errors
-
-Keep the feedback encouraging and actionable."""
-    
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-        return response.text
-    except Exception as e:
-        print(f"GenAI feedback generation error: {e}")
-        return f"Pronunciation Analysis:\n- Overall accuracy: {accuracy:.1f}%\n- Most problematic words: {[word for word, _ in problematic_words[:3]]}\n- Total errors tracked: {tracking['error_count']}"
 
 # -----------------------------
 # Routes
@@ -309,24 +266,30 @@ async def align_audio(file: UploadFile = File(...), session_id: str = "default")
 
         print(f"📁 Received {len(audio_data)} bytes audio")
 
-        # 1️⃣ Transcribe with WhisperX (with word timestamps)
-        print("🎤 Starting WhisperX transcription...")
-        result = WHISPER_MODEL.transcribe(path, language="en")
-        print(f"🔍 Raw WhisperX segments: {len(result.get('segments', []))}")
+        local_path = "saved_audio.wav"  # or any path you want
+        shutil.copy(path, local_path)
+        print(f"💾 Saved to {local_path}")
 
-        # 2️⃣ Load and run alignment model manually for word-level timings
+        print(f"📂 Loading audio from: {path}")
         try:
-            align_model, metadata = whisperx.load_align_model(language_code="en", device=DEVICE)
-            aligned = whisperx.align(
-                result["segments"], align_model, metadata, path, DEVICE
-            )
-            result = aligned
-            print("✅ WhisperX alignment complete (word-level timings enabled).")
+            waveform, sr = torchaudio.load(path)
         except Exception as e:
-            print(f"⚠️ WhisperX alignment failed: {e}")
+            print(f"⚠️ Torchaudio failed, using librosa fallback: {e}")
+            import librosa
+            waveform, sr = librosa.load(path, sr=16000)
+            waveform = torch.from_numpy(waveform).unsqueeze(0)
+        
+        if sr != 16000:
+            waveform = torchaudio.functional.resample(waveform, sr, 16000)
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
 
-        transcript = " ".join([s["text"] for s in result["segments"]]).strip()
-        print(f"✅ WHISPERX: '{transcript}'")
+        inputs = whisper_processor(waveform.squeeze(), sampling_rate=16000, return_tensors="pt").to(DEVICE)
+        with torch.no_grad():
+            predicted_ids = whisper_model.generate(**inputs)
+        transcript = whisper_processor.batch_decode(predicted_ids, skip_special_tokens=True)[0].strip()
+
+        print(f"✅ Transcript: \"{transcript}\"")
 
         if not transcript:
             return JSONResponse({
@@ -336,169 +299,157 @@ async def align_audio(file: UploadFile = File(...), session_id: str = "default")
                 "note": "No speech detected. Try speaking louder or closer to the mic."
             })
 
-        # 2️⃣ Convert to proper audio format if needed
-        try:
-            from pydub import AudioSegment
-            audio = AudioSegment.from_file(path)
-            audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
-            converted_path = os.path.join(tmp, "converted.wav")
-            audio.export(converted_path, format="wav")
-            path = converted_path
-        except Exception as e:
-            print(f"⚠️  Audio conversion failed: {e}")
 
-        # 3️⃣ Phoneme recognition (wav2vec2-espeak)
-        try:
-            waveform, sr = torchaudio.load(path)
-        except Exception:
-            waveform, sr = librosa.load(path, sr=16000)
-            waveform = torch.tensor(waveform).unsqueeze(0)
+        print("\n🔤 Converting transcript to phonemes (using g2p-en)...")
+        phonemes = text_to_phonemes_g2p(transcript, vocab)
 
-        if sr != 16000:
-            resampler = torchaudio.transforms.Resample(sr, 16000)
-            waveform = resampler(waveform)
+        if not phonemes:
+            print("❌ ERROR: No phonemes generated!")
+            print("Make sure g2p-en is installed: pip install g2p-en")
+            exit(1)
 
-        inputs = PHONEME_PROCESSOR(waveform.squeeze(), sampling_rate=16000, return_tensors="pt")
+        print(f"📜 Target phonemes: {phonemes}")
+        print(f"   Total: {len(phonemes)} phonemes")
+
+        # Verify all phonemes are in vocab
+        missing = [p for p in phonemes if p not in vocab]
+        if missing:
+            print(f"⚠️ WARNING: Some phonemes not in vocab: {set(missing)}")
+            phonemes = [p for p in phonemes if p in vocab]
+            print(f"   Filtered to {len(phonemes)} valid phonemes")
+
+        print("\n🎯 Generating emissions...")
+        inputs = processor(waveform.squeeze(), sampling_rate=16000, return_tensors="pt")
+        inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+
         with torch.no_grad():
-            logits = PHONEME_MODEL_LOADED(**inputs).logits[0]
+            logits = model(**inputs).logits
 
-        pred_ids = torch.argmax(logits, dim=-1).cpu().numpy()
-        tokens = PHONEME_PROCESSOR.tokenizer.convert_ids_to_tokens(pred_ids)
+        log_probs = torch.log_softmax(logits, dim=-1)
+        print(f"   Emission shape: {log_probs.shape}")
 
-        time_per_frame = PHONEME_MODEL_LOADED.config.inputs_to_logits_ratio / 16000.0
-        phoneme_segments = []
-        current = None
-        for i, token in enumerate(tokens):
-            if token == PHONEME_PROCESSOR.tokenizer.pad_token:
-                continue
-            if current and token != current["phoneme"]:
-                current["end"] = i * time_per_frame
-                phoneme_segments.append(current)
-                current = {"phoneme": token, "start": i * time_per_frame}
-            elif not current:
-                current = {"phoneme": token, "start": i * time_per_frame}
-        if current:
-            current["end"] = len(tokens) * time_per_frame
-            phoneme_segments.append(current)
+        print("\n🎯 Running forced alignment...")
 
-        phoneme_segments = [p for p in phoneme_segments if p["phoneme"] != "<pad>"]
-        print("🔍 PHONEMES (IPA):", " ".join(p["phoneme"] for p in phoneme_segments))
+        target_ids = processor.tokenizer.convert_tokens_to_ids(phonemes)
+        targets = torch.tensor([target_ids], dtype=torch.int32, device=DEVICE)
+        blank = processor.tokenizer.pad_token_id
 
-        # 4️⃣ Group phonemes using WhisperX word timings
-        word_groups = []
-        segments = result.get("segments", [])
-        if segments and "words" in segments[0]:
-            for seg in segments:
-                for w in seg["words"]:
-                    start, end = w["start"], w["end"]
-                    text = w["word"].lower()
-                    word_groups.append({
-                        "word": text,
-                        "start": start,
-                        "end": end,
-                        "phonemes": []
-                    })
+        alignment, scores = F.forced_align(
+            log_probs,
+            targets,
+            blank=blank
+        )
 
-            # assign phonemes to matching or nearest word interval
-            for p in phoneme_segments:
-                ph_mid = 0.5 * (p["start"] + p["end"])
-                matches = [w for w in word_groups if w["start"] <= ph_mid <= w["end"]]
-                if matches:
-                    matches[0]["phonemes"].append(p["phoneme"])
-                elif word_groups:
-                    nearest = min(word_groups, key=lambda w: abs(ph_mid - 0.5 * (w["start"] + w["end"])))
-                    nearest["phonemes"].append(p["phoneme"])
-        else:
-            print("⚠️ WhisperX returned no word segments — using fallback.")
-            word_groups.append({
-                "word": transcript.lower(),
-                "start": 0.0,
-                "end": phoneme_segments[-1]["end"] if phoneme_segments else 0.0,
-                "phonemes": [p["phoneme"] for p in phoneme_segments],
+        alignment = alignment[0]
+        scores = scores[0]
+
+        print("✅ Alignment complete!")
+
+        print("\n📊 Merging repeated tokens...")
+        scores = scores.exp()
+        token_spans = F.merge_tokens(alignment, scores)
+        print(f"✅ Merged into {len(token_spans)} token spans")
+
+        # ==========================================
+        # GENERATE RESULTS
+        # ==========================================
+
+        time_per_frame = model.config.inputs_to_logits_ratio / 16000.0
+        phoneme_results = []
+
+        for span in token_spans:
+            token_id = span.token
+            phoneme = processor.tokenizer.convert_ids_to_tokens([token_id])[0]
+            
+            start_time = span.start * time_per_frame
+            end_time = span.end * time_per_frame
+            
+            phoneme_results.append({
+                "phoneme": phoneme,
+                "start": round(start_time, 3),
+                "end": round(end_time, 3),
+                "duration": round(end_time - start_time, 3),
+                "posterior": round(float(span.score), 4),
             })
 
-        print(f"📊 Grouped {len(word_groups)} words via WhisperX timings (snapped).")
+        # ==========================================
+        # PRINT RESULTS
+        # ==========================================
 
-        # 5️⃣ Compare with CMUdict (IPA)
-        results = []
-        for w in word_groups:
-            word = normalize_word_for_cmu(w["word"])
-            detected_ipa = normalize_ipa(w["phonemes"])
-            std_arpabet = CMU_DICT.get(word, [[""]])[0]
-            std_ipa = normalize_ipa(arpabet_to_ipa(std_arpabet))
-            errs = compare_phoneme_sequences(std_ipa, detected_ipa)
-            
-            # Track pronunciation errors for analysis
-            track_pronunciation_errors(session_id, word, detected_ipa, std_ipa, errs)
-            
-            results.append({
-                "word": word,
-                "standard": std_ipa,
-                "detected": detected_ipa,
-                "errors": errs,
-                "match": len(errs) == 0,
-                "timing": {"start": w["start"], "end": w["end"]}
-            })
+        print("\n" + "="*70)
+        print("🎯 Phoneme-level alignment and posterior scores:")
+        print("="*70)
+        print(f"{'Phoneme':<10} {'Start':>8} {'End':>8} {'Duration':>8} {'Score':>8}")
+        print("-"*70)
 
-        accuracy = sum(1 for r in results if r["match"]) / len(results) * 100 if results else 0
+        for p in phoneme_results:
+            print(f"{p['phoneme']:<10} {p['start']:>7.3f}s {p['end']:>7.3f}s {p['duration']:>7.3f}s {p['posterior']:>8.4f}")
+
+        print("="*70)
+
+        if phoneme_results:
+            avg_score = sum(p['posterior'] for p in phoneme_results) / len(phoneme_results)
+            print(f"\n📊 Statistics:")
+            print(f"   Average confidence: {avg_score:.4f}")
+            print(f"   Phonemes aligned: {len(phoneme_results)}")
+            print(f"   Expected phonemes: {len(phonemes)}")
+            
+            low_conf = [p for p in phoneme_results if p['posterior'] < 0.2]
+            if low_conf:
+                print(f"\n⚠️  {len(low_conf)} phonemes with low confidence (<0.2)")
+
+        print("\n✅ Done.")
+        print("\nNote: This uses g2p-en for phoneme conversion instead of espeak.")
+        print("Results may be less accurate than espeak for some words.")
+
+        # Generate phoneme-level analysis with confidence scores
+        low_confidence_count = len(low_conf)
+        total_phonemes = len(phoneme_results)
         
-        # Generate GenAI response with conversation history
-        print("🤖 Generating AI response...")
+        # Calculate accuracy score (percentage of high-confidence phonemes)
+        accuracy_score = ((total_phonemes - low_confidence_count) / max(total_phonemes, 1)) * 100
+        
+        print(f"📊 Phoneme Analysis:")
+        print(f"   Total phonemes: {total_phonemes}")
+        print(f"   Low confidence (<0.1): {low_confidence_count}")
+        print(f"   Accuracy score: {accuracy_score:.1f}%")
+        
+        # Generate AI response
+        print("\n🤖 Generating AI response...")
         ai_response = generate_gemini_response(transcript, session_id)
-        print(f"🤖 AI Response: {ai_response}")
+        print(f"✅ AI response: {ai_response[:100]}...")
         
-        # Generate audio for the AI response
-        print("🔊 Converting to speech...")
-        audio_data = text_to_speech(ai_response)
-        audio_base64 = None
+        # Generate AI audio
+        print("\n🔊 Generating AI audio...")
+        try:
+            ai_audio_bytes = text_to_speech(ai_response)
+            audio_base64 = base64.b64encode(ai_audio_bytes).decode('utf-8')
+            print("✅ AI audio generated")
+        except Exception as e:
+            print(f"⚠️ TTS failed: {e}")
+            audio_base64 = None
         
-        if audio_data:
-            audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-            print("✅ Audio generated successfully")
-        else:
-            print("⚠️  Audio generation failed")
-        
-        # Get conversation history for this session
+        # Get conversation history
         session_history = conversation_history.get(session_id, [])
         
         return JSONResponse({
             "transcribed_text": transcript,
-            "results": results,
-            "accuracy": accuracy,
+            "phoneme_analysis": phoneme_results,
+            "accuracy_score": accuracy_score,
+            "total_phonemes": total_phonemes,
+            "low_confidence_count": low_confidence_count,
             "ai_response": ai_response,
             "ai_audio": audio_base64,
             "conversation_history": session_history,
             "session_id": session_id,
-            "note": "Grouped via WhisperX word-level timings; pronunciations compared in IPA."
+            "note": "Phoneme-level analysis with confidence scores. Red highlighting for confidence < 0.1"
         })
 
 
-@app.post("/pronunciation-feedback")
-async def get_pronunciation_feedback(session_id: str):
-    """Get pronunciation analysis and feedback for a session."""
-    try:
-        feedback = generate_pronunciation_feedback(session_id)
-        
-        # Get tracking data for additional context
-        tracking_data = pronunciation_tracking.get(session_id, {})
-        
-        return JSONResponse({
-            "feedback": feedback,
-            "tracking_data": {
-                "total_words": tracking_data.get("total_words", 0),
-                "error_count": tracking_data.get("error_count", 0),
-                "accuracy": ((tracking_data.get("total_words", 0) - tracking_data.get("error_count", 0)) / max(tracking_data.get("total_words", 1), 1)) * 100,
-                "problematic_words": list(tracking_data.get("word_errors", {}).keys())[:5],
-                "session_id": session_id
-            }
-        })
-    except Exception as e:
-        return JSONResponse({
-            "error": f"Failed to generate pronunciation feedback: {str(e)}",
-            "feedback": "Unable to analyze pronunciation data at this time."
-        })
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

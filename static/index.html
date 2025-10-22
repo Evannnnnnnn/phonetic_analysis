@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Phonetic Analysis Studio</title>
 
-<style>
+  <style>
 /* ========== BASE ========== */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -73,6 +73,11 @@ body {
   background: rgba(255,255,255,0.35);
   transform: translateY(-2px);
 }
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
 .btn.recording {
   background: linear-gradient(145deg, #ff4b2b, #ff416c);
   box-shadow: 0 0 25px rgba(255, 65, 108, 0.6);
@@ -98,6 +103,7 @@ body {
 .status.ready { background: rgba(46, 204, 113, 0.2); color: #1b5e20; }
 .status.recording { background: rgba(231, 76, 60, 0.2); color: #c0392b; }
 .status.processing { background: rgba(241, 196, 15, 0.2); color: #f39c12; }
+.status.error { background: rgba(231, 76, 60, 0.3); color: #c0392b; }
 
 /* ========== RESULTS PANEL ========== */
 .results {
@@ -107,6 +113,7 @@ body {
   margin: 20px;
   animation: fadeUp 0.7s ease;
 }
+.hidden { display: none; }
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
@@ -267,72 +274,16 @@ body {
   box-shadow: none;
 }
 
-/* Pronunciation Feedback Section */
-.pronunciation-feedback {
-  background: rgba(255,255,255,0.6);
-  border-radius: 15px;
-  padding: 20px;
-  margin: 20px 0;
-  border: 1px solid rgba(255,255,255,0.3);
-  box-shadow: 0 3px 15px rgba(0,0,0,0.08);
-}
-
-.pronunciation-feedback h3 {
-  margin-bottom: 15px;
-  color: #495057;
-  font-size: 1.1em;
-}
-
-.feedback-btn {
-  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-  color: white;
-  border: none;
-  padding: 12px 25px;
-  border-radius: 25px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  margin-bottom: 15px;
-}
-
-.feedback-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
-}
-
-.feedback-content {
-  background: rgba(255,255,255,0.9);
-  border-radius: 10px;
-  padding: 20px;
-  margin-top: 15px;
-}
-
-.feedback-text {
-  color: #333;
-  line-height: 1.6;
-  margin-bottom: 20px;
-  font-size: 1.05em;
-}
-
-.tracking-stats {
-  background: rgba(79, 172, 254, 0.1);
-  border-radius: 8px;
-  padding: 15px;
-  border-left: 4px solid #4facfe;
-}
-
-.tracking-stats h4 {
-  color: #4facfe;
-  margin-bottom: 10px;
-  font-size: 1.1em;
-}
 
 .stat-item {
   display: flex;
   justify-content: space-between;
-  margin: 8px 0;
-  padding: 5px 0;
-  border-bottom: 1px solid rgba(79, 172, 254, 0.2);
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
+.stat-item:last-child {
+  border-bottom: none;
 }
 
 .stat-label {
@@ -341,193 +292,427 @@ body {
 }
 
 .stat-value {
-  color: #333;
+  color: #4facfe;
   font-weight: 500;
 }
 
-/* ========== ACCURACY METER ========== */
-.accuracy-display {
-  margin: 35px auto;
-  text-align: center;
-  position: relative;
-  width: 160px; height: 160px;
+/* Phoneme highlighting */
+.phoneme {
+  display: inline-block;
+  padding: 2px 4px;
+  margin: 1px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+  transition: all 0.2s ease;
 }
-.accuracy-ring {
-  stroke: url(#grad);
-  stroke-width: 10;
-  fill: none;
-  stroke-linecap: round;
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
-  transition: stroke-dashoffset 1s ease;
+
+.phoneme.low-confidence {
+  background-color: rgba(255, 68, 68, 0.2);
+  border: 1px solid #ff4444;
+  color: #ff4444;
+  font-weight: bold;
+}
+
+.phoneme.high-confidence {
+  background-color: rgba(68, 255, 68, 0.2);
+  border: 1px solid #44ff44;
+  color: #44ff44;
+}
+
+.phoneme.official {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid #ccc;
+  color: #666;
+}
+
+/* Accuracy Gauge */
+.accuracy-gauge {
+  text-align: center;
+  margin: 25px 0;
+}
+.gauge-circle {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  margin: 0 auto;
+}
+.gauge-svg { transform: rotate(-90deg); }
+.gauge-bg { stroke: rgba(255,255,255,0.3); }
+.gauge-progress {
+  stroke: url(#gaugeGradient);
+  stroke-dasharray: 440;
+  stroke-dashoffset: 440;
+  transition: stroke-dashoffset 1.5s ease;
 }
 .accuracy-number {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 2em;
-  font-weight: 700;
+  font-size: 2.5em;
+  font-weight: bold;
   color: #333;
 }
-.hidden { display: none; }
-</style>
+  </style>
 </head>
 <body>
 
 <div class="container">
   <div class="header">
-    <h1>Phonetic Analysis Studio</h1>
-    <p>Record your speech and get detailed pronunciation feedback</p>
+    <h1>🎙️ Phonetic Analysis Studio</h1>
+    <p>High-Quality Voice Recording & Pronunciation Analysis</p>
   </div>
 
-  <div class="content">
-    <div class="recording-section">
-      <button id="startBtn" class="btn">Start Recording</button>
-      <button id="stopBtn" class="btn" disabled>⏹ Stop</button>
-    </div>
+  <div class="recording-section">
+    <button id="startBtn" class="btn" onclick="startRecording()">🎤 Start Recording</button>
+    <button id="stopBtn" class="btn" onclick="stopRecording()" disabled>⏹️ Stop Recording</button>
     <div id="status" class="status ready">Ready to record</div>
+  </div>
 
-    <div id="results" class="hidden results">
-      <div class="transcription">
-        <h3>Transcription</h3>
-        <div id="transcriptionText"></div>
+  <div id="results" class="results hidden">
+    <div class="transcription">
+      <h3>📝 Transcription:</h3>
+      <p id="transcriptionText">Your spoken text will appear here...</p>
+    </div>
+
+    <div class="pronunciation-comparison">
+      <h3>🔊 Pronunciation Comparison</h3>
+      <div class="pronunciation-row">
+        <span class="pronunciation-label">Your pronunciation:</span>
+        <div class="pronunciation-text" id="yourPronunciation"></div>
       </div>
-
-      <div class="pronunciation-comparison">
-        <h3>Pronunciation Analysis</h3>
-        <div class="pronunciation-row">
-          <div class="pronunciation-label">Your Pronunciation:</div>
-          <div id="yourPronunciation" class="pronunciation-text"></div>
-        </div>
-        <div class="pronunciation-row">
-          <div class="pronunciation-label">Official Pronunciation:</div>
-          <div id="officialPronunciation" class="pronunciation-text"></div>
-        </div>
+      <div class="pronunciation-row">
+        <span class="pronunciation-label">Standard pronunciation:</span>
+        <div class="pronunciation-text" id="officialPronunciation"></div>
       </div>
+    </div>
 
-      <div class="conversation-history">
-        <h3>Conversation History</h3>
-        <div id="conversationList" class="conversation-list"></div>
-      </div>
-
-      <div class="ai-response">
-        <h3>AI Response</h3>
-        <div class="ai-text" id="aiResponse"></div>
-        <button id="playAiAudio" class="btn play-btn" style="display: none;">
-          🔊 Play AI Response
-        </button>
-      </div>
-
-      <div class="pronunciation-feedback">
-        <h3>📊 Pronunciation Analysis</h3>
-        <button id="getFeedbackBtn" class="btn feedback-btn">
-          🎯 Get Pronunciation Feedback
-        </button>
-        <div id="feedbackContent" class="feedback-content" style="display: none;">
-          <div class="feedback-text" id="feedbackText"></div>
-          <div class="tracking-stats" id="trackingStats"></div>
-        </div>
-      </div>
-
-      <div class="accuracy-display">
-        <svg width="160" height="160">
+    <div class="accuracy-gauge">
+      <h3>🎯 Pronunciation Accuracy</h3>
+      <div class="gauge-circle">
+        <svg class="gauge-svg" width="180" height="180">
           <defs>
-            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#667eea"/>
-              <stop offset="100%" stop-color="#764ba2"/>
+            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
             </linearGradient>
           </defs>
-          <circle cx="80" cy="80" r="70" stroke="#eee" stroke-width="10" fill="none" />
-          <circle id="accuracyRing" cx="80" cy="80" r="70" class="accuracy-ring" stroke-dasharray="440" stroke-dashoffset="440"/>
+          <circle class="gauge-bg" cx="90" cy="90" r="70" stroke-width="12" fill="none"/>
+          <circle id="ring" class="gauge-progress" cx="90" cy="90" r="70" stroke-width="12" fill="none"/>
         </svg>
         <div id="accuracyNumber" class="accuracy-number">0%</div>
       </div>
     </div>
+
+    <div class="conversation-history">
+      <h3>💬 Conversation History</h3>
+      <div id="conversationList" class="conversation-list">
+        <!-- Conversation items will be inserted here -->
+      </div>
+    </div>
+
+    <div class="ai-response">
+      <h3>🤖 AI Response</h3>
+      <div id="aiResponse" class="ai-text">AI response will appear here...</div>
+      <button id="playAiAudio" class="play-btn" style="display: none;">🔊 Play AI Response</button>
+    </div>
+
   </div>
 </div>
 
-<script>
-let mediaRecorder, audioChunks = [], isRecording = false;
+  <script>
+// ========== AUDIO WORKLET PROCESSOR CODE ==========
+const audioWorkletCode = `
+class RecorderProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.isRecording = false;
+    this.port.onmessage = (e) => {
+      if (e.data === 'start') {
+        this.isRecording = true;
+      } else if (e.data === 'stop') {
+        this.isRecording = false;
+      }
+    };
+  }
 
+  process(inputs, outputs, parameters) {
+    const input = inputs[0];
+    if (this.isRecording && input && input[0]) {
+      // Send audio data to main thread
+      this.port.postMessage({
+        channelData: input[0]
+      });
+    }
+    return true;
+  }
+}
+
+registerProcessor('recorder-processor', RecorderProcessor);
+`;
+
+// ========== GLOBAL VARIABLES ==========
+let mediaStream = null;
+let audioContext = null;
+let audioWorkletNode = null;
+let recordedChunks = [];
+let isRecording = false;
+let sessionId = 'session_' + Date.now();
+let conversationHistory = [];
+let currentAiAudio = null;
+
+// DOM elements
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
 const results = document.getElementById('results');
 const transcriptionText = document.getElementById('transcriptionText');
+const ring = document.getElementById('ring');
 const accuracyNumber = document.getElementById('accuracyNumber');
-const ring = document.getElementById('accuracyRing');
+const conversationList = document.getElementById('conversationList');
 const aiResponse = document.getElementById('aiResponse');
 const playAiAudio = document.getElementById('playAiAudio');
-const conversationList = document.getElementById('conversationList');
-const getFeedbackBtn = document.getElementById('getFeedbackBtn');
-const feedbackContent = document.getElementById('feedbackContent');
-const feedbackText = document.getElementById('feedbackText');
-const trackingStats = document.getElementById('trackingStats');
 
-let currentAiAudio = null;
-let sessionId = 'session_' + Date.now();
-let conversationHistory = [];
-
-startBtn.onclick = startRecording;
-stopBtn.onclick = stopRecording;
-getFeedbackBtn.onclick = getPronunciationFeedback;
-
+// ========== START RECORDING WITH HIGHEST QUALITY ==========
 async function startRecording() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const options = { mimeType: 'audio/webm;codecs=opus' };
-    mediaRecorder = new MediaRecorder(stream, options);
-    audioChunks = [];
+    console.log('🎤 Requesting microphone access...');
+    
+    // Request microphone with MAXIMUM quality settings
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        // Core quality settings
+        sampleRate: { ideal: 48000, min: 44100 },
+        sampleSize: { ideal: 24, min: 16 },
+        channelCount: 1,
+        
+        // Disable ALL processing
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        
+        // Additional quality hints
+        latency: 0,
+        volume: 1.0
+      }
+    });
 
-    mediaRecorder.ondataavailable = e => e.data.size > 0 && audioChunks.push(e.data);
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(audioChunks, { type: 'audio/webm' });
-      stream.getTracks().forEach(t => t.stop());
-      await analyzeAudio(blob);
+    // Log actual settings
+    const audioTrack = mediaStream.getAudioTracks()[0];
+    const settings = audioTrack.getSettings();
+    console.log('📊 Microphone settings:', {
+      sampleRate: settings.sampleRate,
+      sampleSize: settings.sampleSize,
+      channelCount: settings.channelCount,
+      echoCancellation: settings.echoCancellation,
+      noiseSuppression: settings.noiseSuppression,
+      autoGainControl: settings.autoGainControl
+    });
+
+    // Create AudioContext with high sample rate
+    audioContext = new (window.AudioContext || window.webkitAudioContext)({
+      sampleRate: 48000,
+      latencyHint: 'interactive'
+    });
+
+    console.log('🎵 AudioContext:', audioContext.sampleRate, 'Hz');
+
+    // Create AudioWorklet for processing
+    const blob = new Blob([audioWorkletCode], { type: 'application/javascript' });
+    const workletUrl = URL.createObjectURL(blob);
+    
+    await audioContext.audioWorklet.addModule(workletUrl);
+    URL.revokeObjectURL(workletUrl);
+
+    // Setup audio processing chain
+    const source = audioContext.createMediaStreamSource(mediaStream);
+    audioWorkletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
+
+    // Collect audio data
+    recordedChunks = [];
+    audioWorkletNode.port.onmessage = (event) => {
+      if (event.data.channelData) {
+        const chunk = new Float32Array(event.data.channelData);
+        recordedChunks.push(chunk);
+      }
     };
 
-    mediaRecorder.start();
+    // Connect the chain
+    source.connect(audioWorkletNode);
+    audioWorkletNode.connect(audioContext.destination);
+
+    // Start recording
+    audioWorkletNode.port.postMessage('start');
     isRecording = true;
-    startBtn.disabled = true; stopBtn.disabled = false;
+
+    // Update UI
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
     startBtn.classList.add('recording');
-    statusEl.textContent = 'Recording...'; statusEl.className = 'status recording';
-  } catch {
-    statusEl.textContent = 'Microphone permission denied';
+    statusEl.textContent = 'Recording...';
+    statusEl.className = 'status recording';
+
+    console.log('✅ Recording started');
+
+  } catch (error) {
+    console.error('❌ Recording error:', error);
+    statusEl.textContent = 'Microphone access denied: ' + error.message;
+    statusEl.className = 'status error';
   }
 }
 
-function stopRecording() {
-  if (mediaRecorder && isRecording) {
-    mediaRecorder.stop();
-    isRecording = false;
-    startBtn.disabled = false; stopBtn.disabled = true;
-    startBtn.classList.remove('recording');
-    statusEl.textContent = 'Processing...'; statusEl.className = 'status processing';
+// ========== STOP RECORDING ==========
+async function stopRecording() {
+  if (!isRecording) return;
+
+  console.log('🛑 Stopping recording...');
+
+  // Stop recording
+  isRecording = false;
+  if (audioWorkletNode) {
+    audioWorkletNode.port.postMessage('stop');
+  }
+
+  // Update UI
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  startBtn.classList.remove('recording');
+  statusEl.textContent = 'Processing...';
+  statusEl.className = 'status processing';
+
+  // Process the recorded audio
+  await processRecordedAudio();
+
+  // Cleanup
+  if (audioWorkletNode) {
+    audioWorkletNode.disconnect();
+    audioWorkletNode = null;
+  }
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+  if (audioContext) {
+    await audioContext.close();
+    audioContext = null;
   }
 }
 
+// ========== PROCESS RECORDED AUDIO ==========
+async function processRecordedAudio() {
+  try {
+    if (recordedChunks.length === 0) {
+      throw new Error('No audio data recorded');
+    }
+
+    // Calculate total length
+    const totalLength = recordedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    console.log('🎵 Total samples:', totalLength);
+    console.log('🎵 Chunks:', recordedChunks.length);
+
+    // Combine all chunks
+    const combinedBuffer = new Float32Array(totalLength);
+    let offset = 0;
+    for (const chunk of recordedChunks) {
+      combinedBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const sampleRate = 48000;
+    const duration = totalLength / sampleRate;
+    console.log('⏱️  Duration:', duration.toFixed(2), 'seconds');
+
+    // Convert to WAV
+    const wavBlob = encodeWAV(combinedBuffer, sampleRate);
+    console.log('💾 WAV size:', (wavBlob.size / 1024).toFixed(2), 'KB');
+    console.log('📊 Format: 48kHz, 16-bit, mono, PCM WAV');
+
+    // Send to server
+    await analyzeAudio(wavBlob);
+
+  } catch (error) {
+    console.error('❌ Processing error:', error);
+    statusEl.textContent = 'Error processing audio: ' + error.message;
+    statusEl.className = 'status error';
+  }
+}
+
+// ========== ENCODE TO WAV ==========
+function encodeWAV(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  const writeString = (offset, string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  // WAV header
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+
+  // Convert to 16-bit PCM
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    const val = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    view.setInt16(offset, val, true);
+    offset += 2;
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+// ========== SEND TO SERVER ==========
 async function analyzeAudio(blob) {
   const formData = new FormData();
-  formData.append('file', blob, 'audio.webm');
+  formData.append('file', blob, 'audio.wav');
   formData.append('session_id', sessionId);
-  
-  const res = await fetch('/align', { method: 'POST', body: formData });
-  const data = await res.json();
 
-  if (res.ok) {
-    displayResults(data);
-  } else {
-    statusEl.textContent = 'Error analyzing audio';
+  try {
+    const res = await fetch('/align', { 
+      method: 'POST', 
+      body: formData 
+    });
+    
+    const data = await res.json();
+
+    if (res.ok) {
+      displayResults(data);
+    } else {
+      statusEl.textContent = 'Server error: ' + (data.error || 'Unknown error');
+      statusEl.className = 'status error';
+    }
+  } catch (error) {
+    console.error('❌ Upload error:', error);
+    statusEl.textContent = 'Network error: ' + error.message;
+    statusEl.className = 'status error';
   }
 }
 
+// ========== DISPLAY RESULTS ==========
 function displayResults(data) {
   results.classList.remove('hidden');
-  statusEl.textContent = 'Analysis complete!'; statusEl.className = 'status ready';
+  statusEl.textContent = 'Analysis complete!';
+  statusEl.className = 'status ready';
+  
   transcriptionText.textContent = data.transcribed_text || '[No text detected]';
 
-  displayPronunciationComparison(data.results);
-  animateAccuracy(data.accuracy);
+  // Display phoneme analysis with confidence highlighting
+  displayPhonemeAnalysis(data.phoneme_analysis, data.accuracy_score);
+  animateAccuracy(data.accuracy_score);
   
   // Update conversation history
   if (data.conversation_history) {
@@ -540,7 +725,6 @@ function displayResults(data) {
     aiResponse.textContent = data.ai_response;
     playAiAudio.style.display = 'inline-block';
     
-    // Handle audio playback
     if (data.ai_audio) {
       currentAiAudio = new Audio('data:audio/mpeg;base64,' + data.ai_audio);
       playAiAudio.onclick = () => {
@@ -582,6 +766,43 @@ function displayPronunciationComparison(results) {
   offEl.innerHTML = offHTML;
 }
 
+function displayPhonemeAnalysis(phonemeAnalysis, accuracyScore) {
+  const yourPronunciation = document.getElementById('yourPronunciation');
+  const officialPronunciation = document.getElementById('officialPronunciation');
+  
+  if (!phonemeAnalysis || phonemeAnalysis.length === 0) {
+    yourPronunciation.innerHTML = '<span style="color: #999;">No phoneme data available</span>';
+    officialPronunciation.innerHTML = '<span style="color: #999;">No phoneme data available</span>';
+    return;
+  }
+  
+  // Display detected phonemes with confidence highlighting
+  let yourHTML = '';
+  let officialHTML = '';
+  
+  for (const phonemeData of phonemeAnalysis) {
+    const { phoneme, posterior } = phonemeData;
+    
+    // Check if phoneme has low confidence (posterior < 0.1)
+    const isLowConfidence = posterior < 0.2;
+    
+    // Your pronunciation with confidence highlighting
+    const confidenceClass = isLowConfidence ? 'low-confidence' : 'high-confidence';
+    const confidenceColor = isLowConfidence ? '#ff4444' : '#44ff44';
+    
+    yourHTML += `<span class="phoneme ${confidenceClass}" style="color: ${confidenceColor}; font-weight: bold;" title="Confidence: ${(posterior * 100).toFixed(1)}%">${phoneme}</span> `;
+    
+    // Official pronunciation (same phoneme, no highlighting)
+    officialHTML += `<span class="phoneme official">${phoneme}</span> `;
+  }
+  
+  yourPronunciation.innerHTML = yourHTML;
+  officialPronunciation.innerHTML = officialHTML;
+  
+  // Update accuracy display
+  console.log(`📊 Phoneme Analysis: ${phonemeAnalysis.length} phonemes, ${accuracyScore.toFixed(1)}% accuracy`);
+}
+
 function displayConversationHistory(history) {
   conversationList.innerHTML = history.map((item, index) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -594,65 +815,9 @@ function displayConversationHistory(history) {
     `;
   }).join('');
   
-  // Scroll to bottom of conversation
   conversationList.scrollTop = conversationList.scrollHeight;
 }
 
-async function getPronunciationFeedback() {
-  try {
-    getFeedbackBtn.textContent = '🔄 Analyzing...';
-    getFeedbackBtn.disabled = true;
-    
-    const response = await fetch('/pronunciation-feedback', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ session_id: sessionId })
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      // Display feedback
-      feedbackText.textContent = data.feedback;
-      
-      // Display tracking stats
-      const stats = data.tracking_data;
-      trackingStats.innerHTML = `
-        <h4>📈 Session Statistics</h4>
-        <div class="stat-item">
-          <span class="stat-label">Total Words:</span>
-          <span class="stat-value">${stats.total_words}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Pronunciation Errors:</span>
-          <span class="stat-value">${stats.error_count}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Overall Accuracy:</span>
-          <span class="stat-value">${stats.accuracy.toFixed(1)}%</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Problematic Words:</span>
-          <span class="stat-value">${stats.problematic_words.join(', ') || 'None'}</span>
-        </div>
-      `;
-      
-      feedbackContent.style.display = 'block';
-    } else {
-      feedbackText.textContent = 'Error: ' + (data.error || 'Failed to get pronunciation feedback');
-      feedbackContent.style.display = 'block';
-    }
-  } catch (error) {
-    console.error('Error getting pronunciation feedback:', error);
-    feedbackText.textContent = 'Error: Could not retrieve pronunciation feedback';
-    feedbackContent.style.display = 'block';
-  } finally {
-    getFeedbackBtn.textContent = '🎯 Get Pronunciation Feedback';
-    getFeedbackBtn.disabled = false;
-  }
-}
 
 function animateAccuracy(val) {
   const percent = Math.max(0, Math.min(val, 100));
@@ -660,6 +825,6 @@ function animateAccuracy(val) {
   ring.style.strokeDashoffset = offset;
   accuracyNumber.textContent = percent.toFixed(1) + '%';
 }
-</script>
+  </script>
 </body>
 </html>
