@@ -11,3 +11,6 @@ whisperX
 nltk
 transformers
 librosa
+gtts
+pyttsx3
+google-genai

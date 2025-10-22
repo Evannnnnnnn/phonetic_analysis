@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>🎤 Phonetic Analysis Studio</title>
+<title>Phonetic Analysis Studio</title>
 
 <style>
 /* ========== BASE ========== */
@@ -150,6 +150,201 @@ body {
 .phoneme-correct { color: #2e7d32; }
 .phoneme-error { color: #c62828; border-bottom: 2px solid #e57373; }
 
+/* Conversation History Section */
+.conversation-history {
+  background: rgba(255,255,255,0.6);
+  border-radius: 15px;
+  padding: 20px;
+  margin: 20px 0;
+  border: 1px solid rgba(255,255,255,0.3);
+  box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+}
+
+.conversation-history h3 {
+  margin-bottom: 15px;
+  color: #495057;
+  font-size: 1.1em;
+}
+
+.conversation-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 10px;
+  background: rgba(255,255,255,0.9);
+  border-radius: 10px;
+}
+
+.conversation-item {
+  margin-bottom: 15px;
+  padding: 10px;
+  border-radius: 8px;
+  border-left: 4px solid #4facfe;
+}
+
+.conversation-item.user {
+  background: rgba(79, 172, 254, 0.1);
+  border-left-color: #4facfe;
+}
+
+.conversation-item.assistant {
+  background: rgba(46, 204, 113, 0.1);
+  border-left-color: #2ecc71;
+}
+
+.conversation-item .role {
+  font-weight: 600;
+  font-size: 0.9em;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.conversation-item.user .role {
+  color: #4facfe;
+}
+
+.conversation-item.assistant .role {
+  color: #2ecc71;
+}
+
+.conversation-item .content {
+  color: #333;
+  line-height: 1.4;
+}
+
+.conversation-item .timestamp {
+  font-size: 0.8em;
+  color: #666;
+  margin-top: 5px;
+}
+
+/* AI Response Section */
+.ai-response {
+  background: rgba(255,255,255,0.6);
+  border-radius: 15px;
+  padding: 20px;
+  margin: 20px 0;
+  border: 1px solid rgba(255,255,255,0.3);
+  box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+}
+
+.ai-response h3 {
+  margin-bottom: 15px;
+  color: #495057;
+  font-size: 1.1em;
+}
+
+.ai-text {
+  background: rgba(255,255,255,0.9);
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  font-style: italic;
+  color: #333;
+  line-height: 1.5;
+}
+
+.play-btn {
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.play-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
+}
+
+.play-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Pronunciation Feedback Section */
+.pronunciation-feedback {
+  background: rgba(255,255,255,0.6);
+  border-radius: 15px;
+  padding: 20px;
+  margin: 20px 0;
+  border: 1px solid rgba(255,255,255,0.3);
+  box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+}
+
+.pronunciation-feedback h3 {
+  margin-bottom: 15px;
+  color: #495057;
+  font-size: 1.1em;
+}
+
+.feedback-btn {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+  color: white;
+  border: none;
+  padding: 12px 25px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  margin-bottom: 15px;
+}
+
+.feedback-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+}
+
+.feedback-content {
+  background: rgba(255,255,255,0.9);
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 15px;
+}
+
+.feedback-text {
+  color: #333;
+  line-height: 1.6;
+  margin-bottom: 20px;
+  font-size: 1.05em;
+}
+
+.tracking-stats {
+  background: rgba(79, 172, 254, 0.1);
+  border-radius: 8px;
+  padding: 15px;
+  border-left: 4px solid #4facfe;
+}
+
+.tracking-stats h4 {
+  color: #4facfe;
+  margin-bottom: 10px;
+  font-size: 1.1em;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  margin: 8px 0;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(79, 172, 254, 0.2);
+}
+
+.stat-label {
+  font-weight: 600;
+  color: #495057;
+}
+
+.stat-value {
+  color: #333;
+  font-weight: 500;
+}
+
 /* ========== ACCURACY METER ========== */
 .accuracy-display {
   margin: 35px auto;
@@ -181,25 +376,25 @@ body {
 
 <div class="container">
   <div class="header">
-    <h1>🎤 Phonetic Analysis Studio</h1>
+    <h1>Phonetic Analysis Studio</h1>
     <p>Record your speech and get detailed pronunciation feedback</p>
   </div>
 
   <div class="content">
     <div class="recording-section">
-      <button id="startBtn" class="btn">🎙 Start Recording</button>
+      <button id="startBtn" class="btn">Start Recording</button>
       <button id="stopBtn" class="btn" disabled>⏹ Stop</button>
     </div>
     <div id="status" class="status ready">Ready to record</div>
 
     <div id="results" class="hidden results">
       <div class="transcription">
-        <h3>📝 Transcription</h3>
+        <h3>Transcription</h3>
         <div id="transcriptionText"></div>
       </div>
 
       <div class="pronunciation-comparison">
-        <h3>🔊 Pronunciation Analysis</h3>
+        <h3>Pronunciation Analysis</h3>
         <div class="pronunciation-row">
           <div class="pronunciation-label">Your Pronunciation:</div>
           <div id="yourPronunciation" class="pronunciation-text"></div>
@@ -207,6 +402,30 @@ body {
         <div class="pronunciation-row">
           <div class="pronunciation-label">Official Pronunciation:</div>
           <div id="officialPronunciation" class="pronunciation-text"></div>
+        </div>
+      </div>
+
+      <div class="conversation-history">
+        <h3>Conversation History</h3>
+        <div id="conversationList" class="conversation-list"></div>
+      </div>
+
+      <div class="ai-response">
+        <h3>AI Response</h3>
+        <div class="ai-text" id="aiResponse"></div>
+        <button id="playAiAudio" class="btn play-btn" style="display: none;">
+          🔊 Play AI Response
+        </button>
+      </div>
+
+      <div class="pronunciation-feedback">
+        <h3>📊 Pronunciation Analysis</h3>
+        <button id="getFeedbackBtn" class="btn feedback-btn">
+          🎯 Get Pronunciation Feedback
+        </button>
+        <div id="feedbackContent" class="feedback-content" style="display: none;">
+          <div class="feedback-text" id="feedbackText"></div>
+          <div class="tracking-stats" id="trackingStats"></div>
         </div>
       </div>
 
@@ -237,9 +456,21 @@ const results = document.getElementById('results');
 const transcriptionText = document.getElementById('transcriptionText');
 const accuracyNumber = document.getElementById('accuracyNumber');
 const ring = document.getElementById('accuracyRing');
+const aiResponse = document.getElementById('aiResponse');
+const playAiAudio = document.getElementById('playAiAudio');
+const conversationList = document.getElementById('conversationList');
+const getFeedbackBtn = document.getElementById('getFeedbackBtn');
+const feedbackContent = document.getElementById('feedbackContent');
+const feedbackText = document.getElementById('feedbackText');
+const trackingStats = document.getElementById('trackingStats');
+
+let currentAiAudio = null;
+let sessionId = 'session_' + Date.now();
+let conversationHistory = [];
 
 startBtn.onclick = startRecording;
 stopBtn.onclick = stopRecording;
+getFeedbackBtn.onclick = getPronunciationFeedback;
 
 async function startRecording() {
   try {
@@ -278,6 +509,8 @@ function stopRecording() {
 async function analyzeAudio(blob) {
   const formData = new FormData();
   formData.append('file', blob, 'audio.webm');
+  formData.append('session_id', sessionId);
+  
   const res = await fetch('/align', { method: 'POST', body: formData });
   const data = await res.json();
 
@@ -295,6 +528,41 @@ function displayResults(data) {
 
   displayPronunciationComparison(data.results);
   animateAccuracy(data.accuracy);
+  
+  // Update conversation history
+  if (data.conversation_history) {
+    conversationHistory = data.conversation_history;
+    displayConversationHistory(conversationHistory);
+  }
+  
+  // Display AI response
+  if (data.ai_response) {
+    aiResponse.textContent = data.ai_response;
+    playAiAudio.style.display = 'inline-block';
+    
+    // Handle audio playback
+    if (data.ai_audio) {
+      currentAiAudio = new Audio('data:audio/mpeg;base64,' + data.ai_audio);
+      playAiAudio.onclick = () => {
+        if (currentAiAudio.paused) {
+          currentAiAudio.play();
+          playAiAudio.textContent = '⏸️ Pause AI Response';
+        } else {
+          currentAiAudio.pause();
+          playAiAudio.textContent = '🔊 Play AI Response';
+        }
+      };
+      
+      currentAiAudio.onended = () => {
+        playAiAudio.textContent = '🔊 Play AI Response';
+      };
+    } else {
+      playAiAudio.style.display = 'none';
+    }
+  } else {
+    aiResponse.textContent = 'No AI response available';
+    playAiAudio.style.display = 'none';
+  }
 }
 
 function displayPronunciationComparison(results) {
@@ -312,6 +580,78 @@ function displayPronunciationComparison(results) {
 
   yourEl.innerHTML = yourHTML;
   offEl.innerHTML = offHTML;
+}
+
+function displayConversationHistory(history) {
+  conversationList.innerHTML = history.map((item, index) => {
+    const timestamp = new Date().toLocaleTimeString();
+    return `
+      <div class="conversation-item ${item.role}">
+        <div class="role">${item.role === 'user' ? 'You' : 'AI'}</div>
+        <div class="content">${item.content}</div>
+        <div class="timestamp">${timestamp}</div>
+      </div>
+    `;
+  }).join('');
+  
+  // Scroll to bottom of conversation
+  conversationList.scrollTop = conversationList.scrollHeight;
+}
+
+async function getPronunciationFeedback() {
+  try {
+    getFeedbackBtn.textContent = '🔄 Analyzing...';
+    getFeedbackBtn.disabled = true;
+    
+    const response = await fetch('/pronunciation-feedback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ session_id: sessionId })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      // Display feedback
+      feedbackText.textContent = data.feedback;
+      
+      // Display tracking stats
+      const stats = data.tracking_data;
+      trackingStats.innerHTML = `
+        <h4>📈 Session Statistics</h4>
+        <div class="stat-item">
+          <span class="stat-label">Total Words:</span>
+          <span class="stat-value">${stats.total_words}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Pronunciation Errors:</span>
+          <span class="stat-value">${stats.error_count}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Overall Accuracy:</span>
+          <span class="stat-value">${stats.accuracy.toFixed(1)}%</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Problematic Words:</span>
+          <span class="stat-value">${stats.problematic_words.join(', ') || 'None'}</span>
+        </div>
+      `;
+      
+      feedbackContent.style.display = 'block';
+    } else {
+      feedbackText.textContent = 'Error: ' + (data.error || 'Failed to get pronunciation feedback');
+      feedbackContent.style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error getting pronunciation feedback:', error);
+    feedbackText.textContent = 'Error: Could not retrieve pronunciation feedback';
+    feedbackContent.style.display = 'block';
+  } finally {
+    getFeedbackBtn.textContent = '🎯 Get Pronunciation Feedback';
+    getFeedbackBtn.disabled = false;
+  }
 }
 
 function animateAccuracy(val) {
